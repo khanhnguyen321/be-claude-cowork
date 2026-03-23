@@ -1,0 +1,121 @@
+flowchart TB
+    %% Visual theme
+    classDef mobile fill:#f9f6ef,stroke:#c59d45,stroke-width:2px,color:#2b2b2b
+    classDef edge fill:#e8f1ff,stroke:#2e6bb8,stroke-width:1.8px,color:#11355c
+    classDef logic fill:#eefaf2,stroke:#2d8a4b,stroke-width:1.8px,color:#184f2a
+    classDef data fill:#fff2e8,stroke:#c46d2d,stroke-width:1.8px,color:#6a3715
+    classDef observability fill:#f4ecff,stroke:#6f46c7,stroke-width:1.8px,color:#3b2275
+    classDef risk fill:#fdecee,stroke:#c73545,stroke-width:2px,color:#7a1520
+    classDef scale fill:#e7fff8,stroke:#1b8f73,stroke-width:2px,color:#0f4f3f
+
+    Mobile[Mobile App\nOptimistic UI + Offline Storage]
+
+    subgraph Global[Phase 4 Hyperscale Control Plane]
+        direction LR
+        R53[Route 53\nLatency + Health Routing]
+        ADMIT[Global Admission Control\nPriority Tiers + Load Shedding]
+        GCTRL[Global SLO Control\nError-Budget Burn + Traffic Shift]
+        BUDGET[Regional Budget Guardrails]
+    end
+
+    subgraph Edge[Edge Layer - Region A Active]
+        direction LR
+        WAF[AWS WAF]
+        COG[AWS Cognito]
+        APPSYNC[AWS AppSync GraphQL\nQueries + Mutations + Non-stream Subscriptions]
+        WS[API Gateway WebSocket API\nTrue Token Streaming Channel]
+    end
+
+    subgraph Logic[Logic Tier - Region A Active]
+        direction LR
+        ORCH[Orchestrator Lambda\nProvisioned Concurrency]
+        SQS[SQS FIFO Queue]
+        ASYNC[Async Tasks Lambda]
+        SFN[AWS Step Functions\nLong-running Workflow Orchestration]
+        DLQ[Dead-Letter Queue\nManual Replay]
+    end
+
+    subgraph RegionB[Region B Replica Stack - Active-Active]
+        direction TB
+        RBEDGE[AppSync + WebSocket\nRegional Edge Endpoints]
+        RBLOGIC[Orchestrator + Queue + Step Functions\nRegional Worker Plane]
+    end
+
+    subgraph Data[Data Tier]
+        direction LR
+        DDB[DynamoDB\nSessions + Chat History]
+        GT[DynamoDB Global Tables\nCross-Region Continuity]
+        CACHE[ElastiCache Redis\nPermissions + Config Cache]
+        S3[S3 Project Files]
+        KB[Bedrock Knowledge Bases\nOpenSearch Serverless]
+        BEDROCK[AWS Bedrock Claude]
+        SSM[SSM Parameter Store\nPinned Model ARN]
+    end
+
+    XRAY[AWS X-Ray\nDistributed Tracing]
+
+    Mobile --> R53
+    R53 --> APPSYNC
+    R53 --> WS
+    R53 --> RBEDGE
+
+    WAF --> APPSYNC
+    WAF --> WS
+    COG --> APPSYNC
+    COG --> WS
+
+    APPSYNC --> ORCH
+    WS --> ORCH
+
+    ADMIT --> APPSYNC
+    ADMIT --> WS
+    ADMIT --> ORCH
+    ADMIT --> RBEDGE
+    ADMIT --> RBLOGIC
+    BUDGET --> ADMIT
+    GCTRL --> ADMIT
+    GCTRL --> R53
+
+    ORCH --> DDB
+    ORCH --> GT
+    ORCH --> CACHE
+    ORCH --> SQS
+    ORCH --> SSM
+    ORCH --> BEDROCK
+    ORCH --> KB
+
+    SQS --> ASYNC
+    ASYNC --> SFN
+    ASYNC --> S3
+    SFN --> S3
+    SFN --> KB
+    SFN --> DDB
+    SFN --> DLQ
+    KB --> BEDROCK
+    GT --> DDB
+
+    RBEDGE --> RBLOGIC
+    RBLOGIC --> GT
+    RBLOGIC --> KB
+    RBLOGIC --> BEDROCK
+
+    APPSYNC -.-> XRAY
+    WS -.-> XRAY
+    ORCH -.-> XRAY
+    ASYNC -.-> XRAY
+    SFN -.-> XRAY
+    SQS -.-> XRAY
+    BEDROCK -.-> XRAY
+    RBLOGIC -.-> XRAY
+    GCTRL -.-> XRAY
+
+    class Mobile mobile
+    class WAF,COG,APPSYNC,WS edge
+    class ORCH,SQS,ASYNC,SFN logic
+    class DDB,GT,CACHE,S3,KB,BEDROCK,SSM data
+    class XRAY observability
+    class DLQ risk
+    class R53,ADMIT,GCTRL,BUDGET,RBEDGE,RBLOGIC scale
+
+    %% NOTE: linkStyle indices are position-dependent; revalidate if edges are added/removed above.
+    linkStyle 38,39,40,41,42,43,44,45,46 stroke:#7a52cc,stroke-width:2.2px,stroke-dasharray:6 4,opacity:0.95

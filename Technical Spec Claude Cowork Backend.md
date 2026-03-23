@@ -1,6 +1,5 @@
 # Technical Spec: Claude Cowork Backend
 
-# 
 
 ## 1. Executive Summary
 
@@ -89,6 +88,7 @@ Data isolation is the highest priority for a collaborative workspace:
 - **Long-Running Tasks:** Jobs expected to exceed Lambda's 15-minute execution limit (e.g., ingesting 50 PDFs) are orchestrated by **AWS Step Functions**, not a monolithic Lambda. Step Functions provides built-in retry logic, durable state checkpointing between steps, and a visual execution audit trail.
 - **Async Resilience:** An **SQS FIFO queue** buffers all work dispatched to the Async Tasks Lambda. A configured **Dead-Letter Queue (DLQ)** captures jobs that fail after 3 retry attempts, preventing silent data loss and enabling manual inspection and replay.
 - **Cost Controls:** Usage is tracked per `ProjectID` in real-time. Rate limiting is enforced at the **AppSync** request level (resolver-level throttling) and via **API Gateway** per-connection and per-route throttling on the WebSocket streaming endpoint. Per-`ProjectID` spend thresholds are enforced via **AWS WAF** rate rules and **AWS Budgets** alerts.
+- **Scale Isolation & Admission Control:** Workloads are isolated by tenant tier and region for queues, workers, and streaming routes. During saturation events, lower-priority traffic is rate-shaped or load-shed before priority-tier traffic is affected.
 - **Caching:** **Amazon ElastiCache (Redis)** caches hot-path reads — project membership, user permissions, and project config — with a short TTL (5 minutes) to reduce redundant DynamoDB reads on every chat turn.
 - **Observability:** **AWS X-Ray** provides distributed tracing across AppSync → Lambda → Bedrock, API Gateway WebSocket connections, Step Functions executions, and SQS message processing to pinpoint latency bottlenecks end-to-end.
 
@@ -106,6 +106,16 @@ Data isolation is the highest priority for a collaborative workspace:
 - 750 concurrent active users.
 - 8,000 chat turns/hour sustained.
 - 75 concurrent long-running ingestion jobs.
+
+**Profile Capacity Envelopes:**
+
+| Profile | Simultaneous Connections | Chat Turns/Hour | Ingestion Concurrency | Notes |
+| --- | --- | --- | --- | --- |
+| Startup (Profile A) | ~400 | ~4,500 | ~30 | Cost-first MVP envelope |
+| Enterprise (Profile B) | ~2,000 | ~20,000 | ~200 | Reliability-first enterprise envelope |
+| Hyperscale (Profile C) | Millions (multi-region) | Region and tier dependent | Region and tier dependent | Active-active operation with load-shed controls |
+
+Section 8 defines the default balanced launch SLOs. Profiles A/B/C in Section 19 override these defaults when selected.
 
 ## 9. API Contract Appendix (Minimum Required)
 
@@ -134,6 +144,12 @@ Data isolation is the highest priority for a collaborative workspace:
 }
 ```
 
+### Streaming Backpressure & Overload Semantics
+
+- On transient route or model pressure, server sends `type: "status"` with a retry recommendation and optional `retryAfterMs`.
+- On hard regional saturation, server sends `type: "error"` with `error.code: "REGIONAL_OVERLOAD"`; client must reconnect with exponential backoff and jitter.
+- If partial output is emitted before interruption, server sends a terminal `done` or `error` event with the same `requestId` to maintain idempotent client state.
+
 ### API Error Code Set
 
 | Code | HTTP/Channel Mapping | Client Action |
@@ -143,6 +159,7 @@ Data isolation is the highest priority for a collaborative workspace:
 | `RATE_LIMITED` | 429 / websocket `error` | Exponential backoff and retry |
 | `MODEL_TIMEOUT` | 504 / websocket `error` | Show retry CTA |
 | `DEPENDENCY_FAILURE` | 503 / websocket `error` | Retry with jitter |
+| `REGIONAL_OVERLOAD` | 503 / websocket `error` | Reconnect with jitter; honor `retryAfterMs` when present |
 
 ## 10. Error Handling, Retries, and Idempotency Matrix
 
@@ -179,7 +196,8 @@ Data isolation is the highest priority for a collaborative workspace:
 
 **Regional Strategy:**
 - Phase 1-2: Single-region with backups.
-- Phase 3+: Warm standby in secondary region for critical APIs and data pipelines.
+- Phase 3: Warm standby in secondary region for critical APIs and data pipelines.
+- Phase 4: Active-active multi-region routing for chat and streaming paths with tested failover.
 
 ## 13. Data Governance and Privacy Lifecycle
 
@@ -203,6 +221,8 @@ Data isolation is the highest priority for a collaborative workspace:
 - Bedrock invocation latency, token throughput, throttle/error ratios
 - SQS queue depth, age of oldest message, DLQ depth
 - Step Functions success/failure/cancellation counts
+- Regional connection counts, reconnect rates, and route saturation indicators
+- Error-budget burn by region and by traffic tier (priority vs general)
 
 ### Required Alerts
 
@@ -212,6 +232,8 @@ Data isolation is the highest priority for a collaborative workspace:
 | DLQ depth | > 10 messages | High | Pause replay, investigate failing payload signature |
 | Bedrock throttling | > 5% for 5 min | Medium | Shift traffic to fallback model |
 | WebSocket disconnect spike | > 2x baseline | Medium | Validate API Gateway route throttles and mobile reconnect logic |
+| Regional error-budget burn | > 20% of monthly budget consumed in 24h | High | Shift traffic and tighten admission controls for non-priority tiers |
+| Reconnect storm detected | Reconnect rate > 3x regional baseline for 5 min | High | Enable storm policy, extend backoff hints, and protect priority traffic |
 
 ## 15. Cost Model and Unit Economics
 
@@ -229,6 +251,7 @@ Track and report cost per 1,000 chat turns by component:
 - Soft budget alert at 65% monthly forecast.
 - Hard alert at 85% monthly forecast.
 - Per-project anomaly detection alert when daily cost > 1.7x rolling 7-day average.
+- For Hyperscale profile, add regional spend ceilings and automated throttling of non-priority traffic when regional budget guardrails are exceeded.
 
 ## 16. Environment, Release, and Rollback Strategy
 
@@ -242,6 +265,8 @@ Track and report cost per 1,000 chat turns by component:
 - Infrastructure changes promoted Dev -> Staging -> Prod.
 - Canary rollout for orchestrator Lambda and model-version changes.
 - Rollback trigger: p95 latency or error rate regression > 15% vs baseline for 15 minutes.
+- For multi-region profiles, use region-by-region progressive rollout with global control-plane approval gates.
+- Global rollback trigger: any two regions breaching error-budget burn policy simultaneously, or one region breaching priority-tier latency SLO for > 10 minutes.
 
 ## 17. Test Strategy and Acceptance Criteria
 
@@ -249,8 +274,11 @@ Track and report cost per 1,000 chat turns by component:
 
 - Unit tests for resolver logic, idempotency helpers, and auth guards.
 - Integration tests for AppSync <-> Lambda <-> DynamoDB and streaming pipeline behavior.
-- Load tests for 750 concurrent users and sustained 8,000 chat turns/hour.
+- Load tests for 750 concurrent users and sustained 8,000 chat turns/hour (baseline profile validation).
 - Failure-injection tests for Bedrock throttling, SQS backlog growth, and Step Functions task failures.
+- Regional failover and failback tests for active-active routing paths.
+- Reconnect storm simulations to validate backpressure hints, jitter behavior, and route protection.
+- Hyperscale controlled-load validation for million-connection class scenarios using traffic tiers.
 
 ### Release Acceptance Gate
 
@@ -258,12 +286,13 @@ Track and report cost per 1,000 chat turns by component:
 2. No P1/P2 security findings remain open.
 3. SLOs meet targets for 48-hour soak test.
 4. DLQ remains at 0 under nominal staging load.
+5. For Hyperscale profile, at least one regional failover game day passes and tiered SLOs hold during controlled overload.
 
-## 18. Development Roadmap (3-Phase Execution)
+## 18. Development Roadmap (4-Phase Execution)
 
-This roadmap balances the need for a **Minimum Viable Product (MVP)** with the long-term goal of a robust "Cowork" ecosystem.
+This roadmap balances the need for a **Minimum Viable Product (MVP)** with the long-term goal of a robust and internet-scale "Cowork" ecosystem.
 
-### Phase 1: Foundation & Core Chat (Weeks 1-6)
+### Phase 1: Foundation & Core Chat (Weeks 1-4)
 
 - **Goal:** Establish the "Thin Slice" of the mobile-to-AI connection.
 - **Deliverables:**
@@ -273,7 +302,7 @@ This roadmap balances the need for a **Minimum Viable Product (MVP)** with the l
     - Pin Bedrock model ARN in SSM Parameter Store; configure fallback model.
     - **Internal Milestone:** First per-token streaming chat on a mobile device.
 
-### Phase 2: Knowledge & Collaboration (Weeks 7-14)
+### Phase 2: Knowledge & Collaboration (Weeks 5-9)
 
 - **Goal:** Transition from a simple chatbot to a "Coworker" that understands project data.
 - **Deliverables:**
@@ -282,7 +311,7 @@ This roadmap balances the need for a **Minimum Viable Product (MVP)** with the l
     - Implementation of the `ProjectID` isolation logic (IAM scoping, Bedrock Knowledge Base per project).
     - **Internal Milestone:** User can upload a PDF on mobile and ask Claude questions about it.
 
-### Phase 3: Mobile Polish & Scale (Weeks 15-22)
+### Phase 3: Mobile Polish & Scale (Weeks 10-15)
 
 - **Goal:** Harden the system for public release and optimize UX.
 - **Deliverables:**
@@ -293,9 +322,24 @@ This roadmap balances the need for a **Minimum Viable Product (MVP)** with the l
     - Model deprecation alerting via EventBridge; Provisioned Concurrency tuning.
     - **Internal Milestone:** Beta launch with 750 concurrent users.
 
-## 19. Operating Profiles (Startup vs Enterprise)
+### Phase 4: Internet-Scale Concurrency (Weeks 16-25, growth-triggered)
 
-The default values in this spec represent a balanced launch profile. Use one of the following override profiles when business constraints require cost-first or reliability-first operation.
+> **Startup execution note:** Phase 4 is trigger-based, not strictly date-driven. Begin when any two of the following signals are met: sustained ≥ 5,000 concurrent users, Bedrock throttle rate > 2% over a 7-day window, or revenue/runway justifies multi-region COGS. Do not front-load hyperscale infrastructure.
+
+- **Goal:** Scale from strong growth to sustained operation at millions of simultaneous connected users.
+- **Deliverables:**
+    - Multi-region **active-active** deployment for edge/API paths (AppSync and API Gateway WebSocket), with Route 53 latency routing and automated failover policies.
+    - Global WebSocket connection management strategy: regional connection partitioning, reconnect storm controls, and per-route throttling tuned for mass reconnect events.
+    - Data and workflow partitioning for scale isolation: region-aware queueing and Step Functions execution domains, plus tenant-tier workload isolation to reduce noisy-neighbor impact.
+    - DynamoDB scale hardening: partition-key distribution review, high-cardinality sharding for hot tenants, and Global Tables for cross-region continuity requirements.
+    - Bedrock capacity program: pre-approved quota envelopes, model-tier routing policies, and graceful load-shedding when model capacity is constrained.
+    - Global observability and control plane: cross-region SLO dashboards, regional error-budget burn alerts, and automated traffic shift runbooks.
+    - Cost guardrails for hyperscale traffic: per-tenant token budgets, regional spend ceilings, and real-time anomaly controls.
+    - **Internal Milestone:** Demonstrate >= 1,000,000 simultaneous connected sessions across regions under controlled load, while maintaining defined SLOs for priority traffic classes.
+
+## 19. Operating Profiles (Startup, Enterprise, and Hyperscale)
+
+The default values in this spec represent a balanced launch profile. Use one of the following override profiles when business constraints require cost-first, reliability-first, or hyperscale operation.
 
 ### Profile A: Conservative Startup (Cost-First)
 
@@ -332,7 +376,80 @@ The default values in this spec represent a balanced launch profile. Use one of 
 - Enterprise contracts with strict SLA commitments.
 - Regulated workloads and contractual uptime/SLO obligations.
 
+### Profile C: Hyperscale (Millions Concurrent)
+
+| Category | Override |
+| --- | --- |
+| API Availability SLO | 99.99% monthly (priority tier), 99.95% general tier |
+| p95 TTFT | <= 1.2s priority tier; <= 2.0s general tier |
+| p95 Full Response Latency | <= 6.0s priority tier; <= 9.0s general tier |
+| Capacity Baseline | Multi-region deployment sized for millions of simultaneous connected sessions |
+| Regional Strategy | Active-active multi-region with automated traffic steering and failover |
+| Provisioned Concurrency | Always-on for orchestrator and critical ingestion workers in each active region |
+| Bedrock Throughput | Pre-reserved quota envelopes, model-tier routing, and load-shed policies |
+| DR Targets | Regional failover RTO <= 10 minutes, RPO <= 1 minute for critical metadata paths |
+| Release Gate | Region-by-region canary, global error-budget guardrails, automatic rollback on breach |
+
+**When to Use:**
+- Consumer-scale launches with highly volatile concurrency.
+- Workloads where simultaneous connection volume can spike into the millions.
+
 ### Profile Selection Rule
 
 - Default to the balanced baseline in Sections 8-17 unless procurement, compliance, or traffic projections explicitly require one of the above profiles.
+- Select Profile C when concurrency projections exceed the validated envelope of Profile B.
 - Profile choice must be documented in release notes and reviewed quarterly.
+
+## 20. Phase 4.1 Performance Optimization Pack
+
+This section defines post-Phase-4 optimizations to improve tail latency, cost efficiency, and burst resilience at million-session scale.
+
+| Optimization | Implementation Direction | Acceptance Target |
+| --- | --- | --- |
+| Connection sharding | Partition WebSocket connections by region + tenant hash; enforce per-shard caps and rebalance rules | No shard exceeds 70% connection budget for > 10 minutes during peak |
+| Adaptive token streaming | Dynamically switch between per-token and micro-batched flush (for example 40-120ms windows) based on route pressure | Reduce WebSocket message count by >= 30% at equal p95 TTFT |
+| Multi-level response caching | Add semantic response cache and prompt-prefix cache with short TTL and confidence thresholds | >= 20% cache-assisted responses on repeated query cohorts |
+| Bedrock throughput hardening | Define strict priority/standard/background capacity classes with reserved throughput | Priority tier throttling < 1% during P95 traffic days |
+| Model routing optimization | Route simple intents to smaller models; escalate on low confidence/complexity | >= 25% reduction in cost per 1,000 turns with no SLO regression |
+| DynamoDB hot-key mitigation | Enable deterministic write sharding and emergency key-splitting runbook for hot tenants | Zero sustained hot-partition alarms over 30-day window |
+| Workflow path split | Use Step Functions Standard for durable long jobs and high-throughput path optimization for short orchestrations | >= 20% reduction in orchestration latency for short workflows |
+| Regional autonomy mode | Add degraded-mode feature flags per region and independent local fail-open behavior for non-critical features | Regional incident contained without global priority-tier SLO breach |
+| Performance budgets in CI/CD | Add release gates for TTFT, reconnect success, queue age, and cost-per-turn budgets | All releases blocked automatically when budget regression > 10% |
+| Payload/compression policy | Enforce compact streaming schema and compression policy where supported | >= 15% reduction in average bytes per streamed response |
+
+### 20.1 Rollout Sequence
+
+1. Enable in shadow mode for one region and one non-critical tenant segment.
+2. Promote to all non-critical tenants after 7-day SLO validation.
+3. Promote to priority-tier traffic after two successful game days.
+
+### 20.2 Exit Criteria
+
+- p95 TTFT and full-response SLOs remain within profile thresholds for 30 consecutive days.
+- Priority-tier availability and reconnect SLOs do not regress.
+- Cost per 1,000 chat turns improves by >= 15% versus pre-optimization baseline.
+- No increase in unresolved P1/P2 incidents attributable to optimization rollout.
+
+### 20.3 Implementation Priority Matrix (Impact vs Effort)
+
+| Optimization | Performance Impact | Cost Impact | Delivery Effort | Operational Risk | Suggested Priority |
+| --- | --- | --- | --- | --- | --- |
+| Connection sharding | High | Medium | Medium | Medium | P0 |
+| Bedrock throughput hardening | High | Medium | Medium | Medium | P0 |
+| Performance budgets in CI/CD | Medium | Medium | Low | Low | P0 |
+| Adaptive token streaming | High | Medium | Medium | Medium | P1 |
+| Model routing optimization | Medium | High | Medium | Medium | P1 |
+| DynamoDB hot-key mitigation | High | Medium | Medium | Medium | P1 |
+| Regional autonomy mode | High | Low | Medium | High | P1 |
+| Multi-level response caching | Medium | Medium | Medium | Medium | P2 |
+| Payload/compression policy | Medium | Medium | Low | Low | P2 |
+| Workflow path split | Medium | Medium | High | Medium | P3 |
+
+### 20.4 Recommended Execution Waves
+
+1. **Wave 1 (Stability First):** Connection sharding, Bedrock throughput hardening, performance budgets in CI/CD.
+2. **Wave 2 (Latency + Cost):** Adaptive token streaming, model routing optimization, DynamoDB hot-key mitigation.
+3. **Wave 3 (Resilience + Efficiency):** Regional autonomy mode, multi-level response caching, payload/compression policy.
+4. **Wave 4 (Architecture Refinement):** Workflow path split after prior waves prove stable.
+
+**Wave Gate Rule:** No wave advances until prior-wave regression budgets remain within limits for 14 consecutive days.

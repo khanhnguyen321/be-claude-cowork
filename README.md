@@ -8,7 +8,7 @@ A production-ready backend specification for the **Claude Cowork** mobile AI ass
 
 This folder contains the complete technical specification for Claude Cowork's serverless backend:
 
-- **[Technical Spec Claude Cowork Backend.md](Technical%20Spec%20Claude%20Cowork%20Backend.md)** — Full 19-section specification covering architecture, data model, security, operations, and deployment roadmap
+- **[Technical Spec Claude Cowork Backend.md](Technical%20Spec%20Claude%20Cowork%20Backend.md)** — Full 20-section specification covering architecture, data model, security, operations, and deployment roadmap
 - **[ClaudeCoworkBE.png](ClaudeCoworkBE.png)** — Visual architecture diagram (color-coded layers, component dependencies, streaming flow emphasis)
 - **README.md** — This file
 
@@ -28,7 +28,7 @@ This folder contains the complete technical specification for Claude Cowork's se
 | API Availability | 99.95% (monthly) |
 | Time-to-First-Token (p95) | ≤ 1.2s |
 | Full Response Latency (p95) | ≤ 6.5s |
-| Capacity | 750 concurrent users, 8,000 turns/hour |
+| Capacity (baseline profile) | 750 concurrent users, 8,000 turns/hour |
 
 ### Security & Compliance
 - **Multi-tenant isolation** via projected-scoped ProjectID (Cognito JWT)
@@ -55,8 +55,9 @@ This folder contains the complete technical specification for Claude Cowork's se
 ### For Operations & Deployment
 - **SLOs & capacity:** [Section 8](Technical%20Spec%20Claude%20Cowork%20Backend.md#8-service-level-objectives-slos--capacity-targets) — Availability targets, latency thresholds, and baseline capacity
 - **Error handling:** [Section 10](Technical%20Spec%20Claude%20Cowork%20Backend.md#10-error-handling-retries-and-idempotency-matrix) — Retry policies and idempotency strategies
-- **Operational profiles:** [Section 19](Technical%20Spec%20Claude%20Cowork%20Backend.md#19-operating-profiles-startup-vs-enterprise) — Cost-first (Startup) vs. reliability-first (Enterprise) deployments
-- **Roadmap:** [Section 18](Technical%20Spec%20Claude%20Cowork%20Backend.md#18-development-roadmap-3-phase-execution) — Three-phase rollout plan with milestones
+- **Operational profiles:** [Section 19](Technical%20Spec%20Claude%20Cowork%20Backend.md#19-operating-profiles-startup-enterprise-and-hyperscale) — Cost-first (Startup), reliability-first (Enterprise), and Hyperscale deployments
+- **Roadmap:** [Section 18](Technical%20Spec%20Claude%20Cowork%20Backend.md#18-development-roadmap-4-phase-execution) — Four-phase rollout plan with milestones
+- **Optimization pack:** [Section 20](Technical%20Spec%20Claude%20Cowork%20Backend.md#20-phase-41-performance-optimization-pack) — Post-Phase-4 scaling and performance improvements
 
 ### For Security & Compliance
 - [Section 5 - Security & Multi-Tenancy](Technical%20Spec%20Claude%20Cowork%20Backend.md#5-security--multi-tenancy)
@@ -71,35 +72,7 @@ This folder contains the complete technical specification for Claude Cowork's se
 
 ## 🏗️ Architecture at a Glance
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    MOBILE CLIENT                             │
-└────────────────┬──────────────────────────────┬──────────────┘
-                 │                              │
-        ┌────────▼────────┐          ┌──────────▼────────┐
-        │   AppSync GraphQL│          │ API Gateway WSS   │
-        │   (queries + state)         │  (token stream)   │
-        └────────┬────────┘          └──────────┬────────┘
-                 │                              │
-                 └────────────────┬─────────────┘
-                                  │
-                      ┌───────────▼───────────┐
-                      │  Orchestrator Lambda  │
-                      │  (Provisioned Concur.)│
-                      └───────────┬───────────┘
-                                  │
-          ┌───────────┬───────────┼───────────┬──────────┐
-          │           │           │           │          │
-     ┌────▼──┐  ┌─────▼──┐  ┌────▼───┐  ┌───▼────┐  ┌──▼───┐
-     │ SQS   │  │DynamoDB│  │Bedrock │  │ECache  │  │ Step │
-     │ FIFO  │  │ (state)│  │(LLM)   │  │(cache) │  │ Func │
-     └────┬──┘  └────────┘  │+ KB RAG│  └────────┘  │(jobs)│
-          │                 └────────┘              └──────┘
-          │
-     ┌────▼──┐
-     │  DLQ  │
-     └───────┘
-```
+See [ClaudeCoworkBE.png](ClaudeCoworkBE.png) for the authoritative architecture diagram, including the Phase 4 hyperscale control plane and active-active regional topology.
 
 ---
 
@@ -119,7 +92,7 @@ This folder contains the complete technical specification for Claude Cowork's se
 1. Read Sections 1–8 (core architecture + SLOs)
 2. Deep-dive [Section 3](Technical%20Spec%20Claude%20Cowork%20Backend.md#3-data-model--access-patterns) (DynamoDB patterns)
 3. Review [Section 9](Technical%20Spec%20Claude%20Cowork%20Backend.md#9-api-contract-appendix-minimum-required) (API contracts)
-4. Check [Section 18](Technical%20Spec%20Claude%20Cowork%20Backend.md#18-development-roadmap-3-phase-execution) (Phase 1 deliverables)
+4. Check [Section 18](Technical%20Spec%20Claude%20Cowork%20Backend.md#18-development-roadmap-4-phase-execution) (Phase 1 deliverables)
 
 **If you're planning operations:**
 1. Section 8 (SLOs and capacity thresholds)
@@ -131,7 +104,7 @@ This folder contains the complete technical specification for Claude Cowork's se
 
 ## 🎮 Operating Profiles
 
-Two deployment profiles are provided. Select based on your constraints:
+Three deployment profiles are provided. Select based on your constraints:
 
 | Profile | Startup (Phase 1) | Enterprise (Phase 3+) |
 |---------|------------------|----------------------|
@@ -142,7 +115,16 @@ Two deployment profiles are provided. Select based on your constraints:
 | **Disaster Recovery RTO** | 4 hours | 30 minutes |
 | **Best For** | MVP, cost-conscious | Mission-critical, SLA-driven |
 
-See **[Section 19 - Operating Profiles](Technical%20Spec%20Claude%20Cowork%20Backend.md#19-operating-profiles-startup-vs-enterprise)** for full override values.
+| Profile | Hyperscale (Phase 4) |
+|---------|----------------------|
+| **Availability Target** | 99.99% priority tier / 99.95% general tier |
+| **Time-to-First-Token (p95)** | 1.2s priority tier / 2.0s general tier |
+| **Concurrent Users** | Millions (multi-region, active-active) |
+| **Provisioned Concurrency** | Always-on in each active region |
+| **Disaster Recovery RTO** | <= 10 minutes (regional failover) |
+| **Best For** | Consumer-scale launches with massive concurrency spikes |
+
+See **[Section 19 - Operating Profiles](Technical%20Spec%20Claude%20Cowork%20Backend.md#19-operating-profiles-startup-enterprise-and-hyperscale)** for full override values.
 
 ---
 
@@ -167,8 +149,9 @@ See **[Section 19 - Operating Profiles](Technical%20Spec%20Claude%20Cowork%20Bac
 | 15 | Cost Model and Unit Economics | Unit economics, budget alerts, scaling costs |
 | 16 | Environment, Release, and Rollback Strategy | Canary rollouts, regression gates, rollback triggers |
 | 17 | Test Strategy and Acceptance Criteria | Load testing, integration, acceptance gates |
-| 18 | Development Roadmap (3-Phase Execution) | Phase 1 (streaming), Phase 2 (RAG knowledge), Phase 3 (scale) |
-| 19 | Operating Profiles (Startup vs Enterprise) | Startup vs. Enterprise deployment variants |
+| 18 | Development Roadmap (4-Phase Execution) | Phase 1 (streaming), Phase 2 (RAG knowledge), Phase 3 (scale), Phase 4 (hyperscale) |
+| 19 | Operating Profiles (Startup, Enterprise, and Hyperscale) | Startup, Enterprise, and Hyperscale deployment variants |
+| 20 | Phase 4.1 Performance Optimization Pack | Post-Phase-4 latency, throughput, and cost optimization program |
 
 ---
 
