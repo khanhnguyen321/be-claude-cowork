@@ -8,7 +8,7 @@ A production-ready backend specification for the **Claude Cowork** mobile AI ass
 
 This folder contains the complete technical specification for Claude Cowork's serverless backend:
 
-- **[Technical Spec Claude Cowork Backend...md](Technical%20Spec%20Claude%20Cowork%20Backend%2032c73b4fe35880dfb153f663c3f2bc09.md)** — Full 19-section specification covering architecture, data model, security, operations, and deployment roadmap
+- **[Technical Spec Claude Cowork Backend.md](Technical%20Spec%20Claude%20Cowork%20Backend.md)** — Full 19-section specification covering architecture, data model, security, operations, and deployment roadmap
 - **[ClaudeCoworkBE.png](ClaudeCoworkBE.png)** — Visual architecture diagram (color-coded layers, component dependencies, streaming flow emphasis)
 - **[quesions.md](quesions.md)** — Design questions and requirements driving the architecture
 - **README.md** — This file
@@ -49,23 +49,23 @@ This folder contains the complete technical specification for Claude Cowork's se
 ## 🚀 Quick Navigation
 
 ### For Architecture Review
-1. **Start here:** [Section 2 - Architecture Overview](Technical%20Spec%20Claude%20Cowork%20Backend%2032c73b4fe35880dfb153f663c3f2bc09.md#2-architecture-overview) — Component roles and design decisions
+1. **Start here:** [Section 2 - Architecture Overview](Technical%20Spec%20Claude%20Cowork%20Backend.md#2-architecture-overview) — Component roles and design decisions
 2. **Then review:** [Visual Diagram](ClaudeCoworkBE.png) — See components and dataflow
-3. **Deep dive:** [Section 3 - Data Model](Technical%20Spec%20Claude%20Cowork%20Backend%2032c73b4fe35880dfb153f663c3f2bc09.md#3-data-model--access-patterns) — DynamoDB schema and access patterns
+3. **Deep dive:** [Section 3 - Data Model](Technical%20Spec%20Claude%20Cowork%20Backend.md#3-data-model--access-patterns) — DynamoDB schema and access patterns
 
 ### For Operations & Deployment
-- **SLOs & capacity:** [Section 8](Technical%20Spec%20Claude%20Cowork%20Backend%2032c73b4fe35880dfb153f663c3f2bc09.md#8-service-level-objectives-slos--capacity-targets) — Availability targets, latency thresholds, and baseline capacity
-- **Error handling:** [Section 10](Technical%20Spec%20Claude%20Cowork%20Backend%2032c73b4fe35880dfb153f663c3f2bc09.md#10-error-handling-retries-and-idempotency-matrix) — Retry policies and idempotency strategies
-- **Operational profiles:** [Section 19](Technical%20Spec%20Claude%20Cowork%20Backend%2032c73b4fe35880dfb153f663c3f2bc09.md#19-operating-profiles) — Cost-first (Startup) vs. reliability-first (Enterprise) deployments
-- **Roadmap:** [Section 18](Technical%20Spec%20Claude%20Cowork%20Backend%2032c73b4fe35880dfb153f663c3f2bc09.md#18-development-roadmap-phases-1-3) — Three-phase rollout plan with milestones
+- **SLOs & capacity:** [Section 8](Technical%20Spec%20Claude%20Cowork%20Backend.md#8-service-level-objectives-slos--capacity-targets) — Availability targets, latency thresholds, and baseline capacity
+- **Error handling:** [Section 10](Technical%20Spec%20Claude%20Cowork%20Backend.md#10-error-handling-retries-and-idempotency-matrix) — Retry policies and idempotency strategies
+- **Operational profiles:** [Section 19](Technical%20Spec%20Claude%20Cowork%20Backend.md#19-operating-profiles) — Cost-first (Startup) vs. reliability-first (Enterprise) deployments
+- **Roadmap:** [Section 18](Technical%20Spec%20Claude%20Cowork%20Backend.md#18-development-roadmap-phases-1-3) — Three-phase rollout plan with milestones
 
 ### For Security & Compliance
-- [Section 5 - Security & Multi-Tenancy](Technical%20Spec%20Claude%20Cowork%20Backend%2032c73b4fe35880dfb153f663c3f2bc09.md#5-security--multi-tenancy)
-- [Section 12 - AI Safety & Governance](Technical%20Spec%20Claude%20Cowork%20Backend%2032c73b4fe35880dfb153f663c3f2bc09.md#12-ai-safety--governance)
+- [Section 5 - Security & Multi-Tenancy](Technical%20Spec%20Claude%20Cowork%20Backend.md#5-security--multi-tenancy)
+- [Section 12 - AI Safety & Governance](Technical%20Spec%20Claude%20Cowork%20Backend.md#12-ai-safety--governance)
 
 ### For Testing & Deployments
-- [Section 17 - Test Strategy](Technical%20Spec%20Claude%20Cowork%20Backend%2032c73b4fe35880dfb153f663c3f2bc09.md#17-test-strategy)
-- [Section 16 - Release & Rollback Strategy](Technical%20Spec%20Claude%20Cowork%20Backend%2032c73b4fe35880dfb153f663c3f2bc09.md#16-release--rollback-strategy)
+- [Section 17 - Test Strategy](Technical%20Spec%20Claude%20Cowork%20Backend.md#17-test-strategy)
+- [Section 16 - Release & Rollback Strategy](Technical%20Spec%20Claude%20Cowork%20Backend.md#16-release--rollback-strategy)
 
 ---
 
@@ -107,19 +107,19 @@ This folder contains the complete technical specification for Claude Cowork's se
 
 **If you have 15 minutes:**
 1. Read this README (you are here)
-2. Scan [Section 2 - Architecture Overview](Technical%20Spec%20Claude%20Cowork%20Backend%2032c73b4fe35880dfb153f663c3f2bc09.md#2-architecture-overview)
+2. Scan [Section 2 - Architecture Overview](Technical%20Spec%20Claude%20Cowork%20Backend.md#2-architecture-overview)
 3. Review the [diagram](ClaudeCoworkBE.png)
 
 **If you have 1 hour:**
 1. Read Sections 1–2 (Executive Summary & Architecture)
 2. Skim Sections 3–7 (Data Model, Mobile UX, Security, AI Orchestration, Scalability)
-3. Review [Section 8](Technical%20Spec%20Claude%20Cowork%20Backend%2032c73b4fe35880dfb153f663c3f2bc09.md#8-service-level-objectives-slos--capacity-targets) (SLOs & Capacity)
+3. Review [Section 8](Technical%20Spec%20Claude%20Cowork%20Backend.md#8-service-level-objectives-slos--capacity-targets) (SLOs & Capacity)
 
 **If you're implementing Phase 1:**
 1. Read Sections 1–8 (core architecture + SLOs)
-2. Deep-dive [Section 3](Technical%20Spec%20Claude%20Cowork%20Backend%2032c73b4fe35880dfb153f663c3f2bc09.md#3-data-model--access-patterns) (DynamoDB patterns)
-3. Review [Section 9](Technical%20Spec%20Claude%20Cowork%20Backend%2032c73b4fe35880dfb153f663c3f2bc09.md#9-api-contract-appendix-minimum-required) (API contracts)
-4. Check [Section 18](Technical%20Spec%20Claude%20Cowork%20Backend%2032c73b4fe35880dfb153f663c3f2bc09.md#18-development-roadmap-phases-1-3) (Phase 1 deliverables)
+2. Deep-dive [Section 3](Technical%20Spec%20Claude%20Cowork%20Backend.md#3-data-model--access-patterns) (DynamoDB patterns)
+3. Review [Section 9](Technical%20Spec%20Claude%20Cowork%20Backend.md#9-api-contract-appendix-minimum-required) (API contracts)
+4. Check [Section 18](Technical%20Spec%20Claude%20Cowork%20Backend.md#18-development-roadmap-phases-1-3) (Phase 1 deliverables)
 
 **If you're planning operations:**
 1. Section 8 (SLOs and capacity thresholds)
@@ -142,7 +142,7 @@ Two deployment profiles are provided. Select based on your constraints:
 | **Disaster Recovery RTO** | 4 hours | 30 minutes |
 | **Best For** | MVP, cost-conscious | Mission-critical, SLA-driven |
 
-See **[Section 19 - Operating Profiles](Technical%20Spec%20Claude%20Cowork%20Backend%2032c73b4fe35880dfb153f663c3f2bc09.md#19-operating-profiles)** for full override values.
+See **[Section 19 - Operating Profiles](Technical%20Spec%20Claude%20Cowork%20Backend.md#19-operating-profiles)** for full override values.
 
 ---
 
@@ -217,7 +217,7 @@ This specification is **production-ready** and includes:
 **Next Steps:**
 1. Share this spec with your engineering team for Phase 1 planning
 2. Select an operating profile based on launch constraints
-3. Reference [Section 18](Technical%20Spec%20Claude%20Cowork%20Backend%2032c73b4fe35880dfb153f663c3f2bc09.md#18-development-roadmap-phases-1-3) for implementation sequencing
+3. Reference [Section 18](Technical%20Spec%20Claude%20Cowork%20Backend.md#18-development-roadmap-phases-1-3) for implementation sequencing
 
 ---
 
