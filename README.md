@@ -10,7 +10,6 @@ This folder contains the complete technical specification for Claude Cowork's se
 
 - **[Technical Spec Claude Cowork Backend.md](Technical%20Spec%20Claude%20Cowork%20Backend.md)** — Full 19-section specification covering architecture, data model, security, operations, and deployment roadmap
 - **[ClaudeCoworkBE.png](ClaudeCoworkBE.png)** — Visual architecture diagram (color-coded layers, component dependencies, streaming flow emphasis)
-- **[quesions.md](quesions.md)** — Design questions and requirements driving the architecture
 - **README.md** — This file
 
 ---
@@ -56,16 +55,17 @@ This folder contains the complete technical specification for Claude Cowork's se
 ### For Operations & Deployment
 - **SLOs & capacity:** [Section 8](Technical%20Spec%20Claude%20Cowork%20Backend.md#8-service-level-objectives-slos--capacity-targets) — Availability targets, latency thresholds, and baseline capacity
 - **Error handling:** [Section 10](Technical%20Spec%20Claude%20Cowork%20Backend.md#10-error-handling-retries-and-idempotency-matrix) — Retry policies and idempotency strategies
-- **Operational profiles:** [Section 19](Technical%20Spec%20Claude%20Cowork%20Backend.md#19-operating-profiles) — Cost-first (Startup) vs. reliability-first (Enterprise) deployments
-- **Roadmap:** [Section 18](Technical%20Spec%20Claude%20Cowork%20Backend.md#18-development-roadmap-phases-1-3) — Three-phase rollout plan with milestones
+- **Operational profiles:** [Section 19](Technical%20Spec%20Claude%20Cowork%20Backend.md#19-operating-profiles-startup-vs-enterprise) — Cost-first (Startup) vs. reliability-first (Enterprise) deployments
+- **Roadmap:** [Section 18](Technical%20Spec%20Claude%20Cowork%20Backend.md#18-development-roadmap-3-phase-execution) — Three-phase rollout plan with milestones
 
 ### For Security & Compliance
 - [Section 5 - Security & Multi-Tenancy](Technical%20Spec%20Claude%20Cowork%20Backend.md#5-security--multi-tenancy)
-- [Section 12 - AI Safety & Governance](Technical%20Spec%20Claude%20Cowork%20Backend.md#12-ai-safety--governance)
+- [Section 11 - AI Safety & Moderation](Technical%20Spec%20Claude%20Cowork%20Backend.md#11-ai-safety-moderation-and-prompt-injection-guardrails)
+- [Section 13 - Data Governance & Privacy Lifecycle](Technical%20Spec%20Claude%20Cowork%20Backend.md#13-data-governance-and-privacy-lifecycle)
 
 ### For Testing & Deployments
-- [Section 17 - Test Strategy](Technical%20Spec%20Claude%20Cowork%20Backend.md#17-test-strategy)
-- [Section 16 - Release & Rollback Strategy](Technical%20Spec%20Claude%20Cowork%20Backend.md#16-release--rollback-strategy)
+- [Section 17 - Test Strategy](Technical%20Spec%20Claude%20Cowork%20Backend.md#17-test-strategy-and-acceptance-criteria)
+- [Section 16 - Release & Rollback Strategy](Technical%20Spec%20Claude%20Cowork%20Backend.md#16-environment-release-and-rollback-strategy)
 
 ---
 
@@ -119,7 +119,7 @@ This folder contains the complete technical specification for Claude Cowork's se
 1. Read Sections 1–8 (core architecture + SLOs)
 2. Deep-dive [Section 3](Technical%20Spec%20Claude%20Cowork%20Backend.md#3-data-model--access-patterns) (DynamoDB patterns)
 3. Review [Section 9](Technical%20Spec%20Claude%20Cowork%20Backend.md#9-api-contract-appendix-minimum-required) (API contracts)
-4. Check [Section 18](Technical%20Spec%20Claude%20Cowork%20Backend.md#18-development-roadmap-phases-1-3) (Phase 1 deliverables)
+4. Check [Section 18](Technical%20Spec%20Claude%20Cowork%20Backend.md#18-development-roadmap-3-phase-execution) (Phase 1 deliverables)
 
 **If you're planning operations:**
 1. Section 8 (SLOs and capacity thresholds)
@@ -142,7 +142,7 @@ Two deployment profiles are provided. Select based on your constraints:
 | **Disaster Recovery RTO** | 4 hours | 30 minutes |
 | **Best For** | MVP, cost-conscious | Mission-critical, SLA-driven |
 
-See **[Section 19 - Operating Profiles](Technical%20Spec%20Claude%20Cowork%20Backend.md#19-operating-profiles)** for full override values.
+See **[Section 19 - Operating Profiles](Technical%20Spec%20Claude%20Cowork%20Backend.md#19-operating-profiles-startup-vs-enterprise)** for full override values.
 
 ---
 
@@ -179,15 +179,15 @@ Cold starts (1–3 seconds) are unacceptable on the critical interactive chat pa
 | 8 | SLOs & Capacity | Availability, latency, throughput targets |
 | 9 | API Contract | GraphQL operations, WebSocket envelope, error codes |
 | 10 | Error Handling & Retry Matrix | Per-component policies, idempotency |
-| 11 | Disaster Recovery | RTO/RPO targets, data retention, backup strategy |
-| 12 | AI Safety & Governance | Model guardrails, token budgets, audit logging |
-| 13 | Cost Model | Unit economics, budget alerts, scaling costs |
-| 14 | Observability & Monitoring | X-Ray traces, CloudWatch metrics, alerting |
-| 15 | Governance & Compliance | Encryption, audit trails, regulatory alignment |
-| 16 | Release & Rollback Strategy | Canary rollouts, regression gates, rollback triggers |
-| 17 | Test Strategy | Load testing, integration, chaos engineering |
-| 18 | Development Roadmap | Phase 1 (streaming), Phase 2 (RAG knowledge), Phase 3 (scale) |
-| 19 | Operating Profiles | Startup vs. Enterprise deployment variants |
+| 11 | AI Safety, Moderation, and Prompt Injection Guardrails | Model guardrails, abuse controls, audit logging |
+| 12 | Disaster Recovery, Backup, and Business Continuity | RTO/RPO targets, backup strategy, recovery posture |
+| 13 | Data Governance and Privacy Lifecycle | Retention, deletion, privacy handling |
+| 14 | Observability, Alerting, and Runbooks | X-Ray traces, CloudWatch metrics, operational response |
+| 15 | Cost Model and Unit Economics | Unit economics, budget alerts, scaling costs |
+| 16 | Environment, Release, and Rollback Strategy | Canary rollouts, regression gates, rollback triggers |
+| 17 | Test Strategy and Acceptance Criteria | Load testing, integration, acceptance gates |
+| 18 | Development Roadmap (3-Phase Execution) | Phase 1 (streaming), Phase 2 (RAG knowledge), Phase 3 (scale) |
+| 19 | Operating Profiles (Startup vs Enterprise) | Startup vs. Enterprise deployment variants |
 
 ---
 
@@ -217,7 +217,7 @@ This specification is **production-ready** and includes:
 **Next Steps:**
 1. Share this spec with your engineering team for Phase 1 planning
 2. Select an operating profile based on launch constraints
-3. Reference [Section 18](Technical%20Spec%20Claude%20Cowork%20Backend.md#18-development-roadmap-phases-1-3) for implementation sequencing
+3. Reference [Section 18](Technical%20Spec%20Claude%20Cowork%20Backend.md#18-development-roadmap-3-phase-execution) for implementation sequencing
 
 ---
 
